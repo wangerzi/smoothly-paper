@@ -9,6 +9,7 @@ export interface Paragraph {
   id: number;
   paper_id: string;
   section: string | null;
+  title: string | null; // 新增：段落标题
   order_index: number;
   content: string;
   translation: string | null;
@@ -34,6 +35,8 @@ export interface DifficultWord {
   part_of_speech: string | null;
   definition: string | null;
   difficulty_level: 'easy' | 'medium' | 'hard';
+  context_before: string | null; // 新增：上下文（前）
+  context_after: string | null; // 新增：上下文（后）
   position_start: number | null;
   position_end: number | null;
 }
@@ -66,6 +69,7 @@ export function saveParagraphs(
   paperId: string,
   paragraphs: Array<{
     section?: string | null;
+    title?: string | null; // 新增：段落标题
     order_index: number;
     content: string;
     translation?: string | null;
@@ -75,9 +79,9 @@ export function saveParagraphs(
   const db = getDb();
   const sql = `
     INSERT INTO paragraphs (
-      paper_id, section, order_index, content, translation, word_count
+      paper_id, section, title, order_index, content, translation, word_count
     )
-    VALUES (?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
   const stmt = db.prepare(sql);
@@ -88,6 +92,7 @@ export function saveParagraphs(
       const result = stmt.run(
         paperId,
         p.section || null,
+        p.title || null, // 新增：段落标题
         p.order_index,
         p.content,
         p.translation || null,
@@ -163,6 +168,8 @@ export function saveDifficultWords(
     part_of_speech?: string;
     definition?: string;
     difficulty_level: 'easy' | 'medium' | 'hard';
+    context_before?: string; // 新增：上下文（前）
+    context_after?: string; // 新增：上下文（后）
     position_start?: number;
     position_end?: number;
   }>
@@ -172,9 +179,10 @@ export function saveDifficultWords(
   const sql = `
     INSERT INTO difficult_words (
       paragraph_id, word, phonetic, part_of_speech, 
-      definition, difficulty_level, position_start, position_end
+      definition, difficulty_level, context_before, context_after,
+      position_start, position_end
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const records = words.map((w) => [
@@ -184,6 +192,8 @@ export function saveDifficultWords(
     w.part_of_speech || null,
     w.definition || null,
     w.difficulty_level,
+    w.context_before || null, // 新增：上下文（前）
+    w.context_after || null, // 新增：上下文（后）
     w.position_start || null,
     w.position_end || null,
   ]);

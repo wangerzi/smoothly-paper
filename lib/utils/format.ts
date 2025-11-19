@@ -96,3 +96,35 @@ export function formatPercentage(value: number, decimals = 0): string {
   return `${value.toFixed(decimals)}%`;
 }
 
+/**
+ * 过滤HTML标签
+ * 移除所有HTML标签和属性，保留纯文本内容
+ */
+export function stripHtmlTags(text: string): string {
+  if (!text) return '';
+  
+  // 1. 移除所有HTML标签
+  let cleaned = text.replace(/<[^>]*>/g, '');
+  
+  // 2. 解码常见HTML实体
+  cleaned = cleaned
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  
+  // 3. 清理多余空格
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  return cleaned;
+}
+
+/**
+ * 转义正则表达式特殊字符
+ */
+export function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+

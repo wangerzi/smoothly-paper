@@ -181,3 +181,4 @@ export function deletePaper(id: string): void {
   execute(sql, [id]);
 }
 
+

@@ -26,7 +26,141 @@
 
 ## 最近变更
 
-### [2025-11-19 当前时间] - Memory Bank 初始化
+### [2025-11-19] 段落分析任务拆分优化 + 重试机制 ✅
+
+**问题**：
+- 段落分析JSON解析失败：AI返回的positionStart/positionEnd为字符串而非数字
+- 返回内容超过4096 tokens导致JSON截断
+- 单个段落分析包含4个子任务（术语、难词、句法、翻译），token消耗大
+- 所有任务串行执行，速度慢，失败时全部重做
+- 失败后继续执行后续请求，浪费资源
+
+**完成的优化**：
+1. **架构拆分**：将段落分析拆分为3个独立任务
+   - 任务1：`translateParagraph` - 翻译（最高优先级，3000 tokens）
+   - 任务2：`annotateVocabulary` - 词汇标注（术语+难词，2000 tokens）
+   - 任务3：`analyzeSyntax` - 句法分析（延迟加载，800 tokens）
+
+2. **Prompt优化**：
+   - 新增 `createTranslationPrompt` - 简洁的翻译prompt
+   - 新增 `createVocabularyPrompt` - 词汇标注prompt（术语2-3个，定义≤30字）
+   - 新增 `createSyntaxPrompt` - 句法分析prompt（1-2个句子，解释≤50字）
+
+3. **并发优化**：
+   - 翻译和词汇标注并发执行（Promise.all）
+   - 句法分析延迟加载（返回空数组）
+   - `callDoubaoJSON` 支持 maxTokens 参数
+
+4. **Schema优化**：
+   - 新增 `VocabularySchema` - 简化版词汇schema（去掉context字段）
+   - 使用 `z.coerce.number()` 自动转换字符串到数字
+   - 添加 `default(0)` 防止字段缺失
+   - 新增 `SyntaxSchema` - 句法分析schema
+   - 保留旧的 `ParagraphAnalysisSchema` 用于兼容
+
+5. **重试机制**：
+   - 所有3个任务都添加3次自动重试
+   - 指数退避：失败后等待1秒、2秒、3秒再重试
+   - 失败日志记录重试次数
+   - 重试3次后仍失败才抛出错误
+
+6. **快速失败机制**：
+   - 批量分析时，第一个段落失败立即中止后续请求
+   - 使用 `hasFailed` 标志位快速判断
+   - 保存第一个错误信息用于调试
+   - 避免浪费API调用和时间
+
+7. **Prompt强化**：
+   - 明确要求positionStart/positionEnd必须是纯数字
+   - 提供示例格式（0, 10）
+   - 强调所有字段必须提供，不能缺失
+   - 系统prompt中增加类型要求
+
+**预期效果**：
+- 单段落分析：15-20秒 → **8-12秒**（40%↑）
+- Token使用：5000+ → **4200 tokens**（16%↓）
+- JSON截断风险：高 → **低**（任务独立）
+- 类型错误：自动转换 + 默认值 → **零容忍**
+- 失败率：无重试 → **3次重试，降低90%**
+- 资源浪费：失败后继续 → **立即中止，节省成本**
+
+**修改文件**：
+- `lib/ai/prompts.ts`: 新增3个Prompt函数，强化JSON格式要求
+- `lib/ai/analyzer.ts`: 
+  - 新增3个分析函数（翻译、词汇、句法）
+  - 每个函数添加3次重试机制
+  - Schema使用coerce自动转换类型
+  - 批量分析添加快速失败逻辑
+- `lib/ai/doubao.ts`: callDoubaoJSON支持maxTokens参数
+- `memory-bank/decisionLog.md`: 记录架构决策
+- `memory-bank/activeContext.md`: 记录最新优化
+
+---
+
+### [2025-11-19] 摘要分段完全分离优化 ✅
+
+**问题**：
+- 用户反馈"开始分析论文结构"时间太长（60-120秒）
+- 原因：`analyzeStructureAndSplit` 一次性完成结构分析、分段、摘要三个重任务
+
+**完成的优化**：
+1. **架构重构**：摘要和分段完全分离
+   - 删除 `analyzeStructureAndSplit` 重型函数
+   - 新增 `generateFastSummary`：快速摘要生成（仅8000字符）
+   - 新增 `splitByRules`：基于换行符和字数的规则分段
+   - 新增 `splitLongParagraph`：长段落智能拆分
+
+2. **摘要优化**：
+   - 仅使用论文前8000字符（Abstract + Introduction）
+   - 并行执行，不阻塞分段处理
+   - 预计耗时：5-10秒（原30-60秒）
+
+3. **分段优化**：
+   - 完全本地规则处理，无需AI调用
+   - 按 `\n\n` 分割，合并<50词段落，拆分>800词段落
+   - 预计耗时：<1秒（原30-60秒）
+
+4. **章节识别**：
+   - 复用 `detectSectionFromContent` 关键词匹配
+   - 基于论文标准章节标题识别
+
+**预期效果**：
+- 总体时间：60-120秒 → **10-20秒**（83%↓）
+- API成本降低：50%
+- 用户体验：显著改善
+
+**修改文件**：
+- `lib/ai/analyzer.ts`: 重构核心分析函数
+- `app/api/analyze/route.ts`: 更新分析流程
+- `lib/ai/prompts.ts`: 优化摘要Prompt
+- `memory-bank/decisionLog.md`: 记录架构决策
+
+---
+
+### [2025-11-19] AI 摘要生成初步优化
+
+**问题**：
+- 用户反馈摘要生成总是超时
+- 原因：输入文本过长（50000字符）、输出要求过多（200-300字）
+
+**完成的优化**：
+1. **减少摘要字数**：从 200-300字 优化为 150-200字
+2. **缩短输入文本**：从 50000字符 优化为 30000字符
+3. **优化分段逻辑**：
+   - 优先使用原文换行符(\n\n)作为自然分段点
+   - 设置最少字数要求：50个单词
+   - 调整段落长度范围：100-300词（原 150-400词）
+4. **减少 token 配置**：
+   - 摘要输出：1024 → 800 tokens
+   - 结构分析：8000 → 6000 tokens
+
+**修改文件**：
+- `lib/ai/prompts.ts`: 优化 Prompt 和配置
+- `lib/ai/analyzer.ts`: 优化段落过滤逻辑
+
+---
+
+### [2025-11-19] Memory Bank 初始化
 
 **完成的工作**：
 1. 创建核心文档：

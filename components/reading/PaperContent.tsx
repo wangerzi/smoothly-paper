@@ -8,12 +8,101 @@
 import { useState } from 'react';
 import type { ParagraphWithAnnotations } from '@/lib/db/paragraphs';
 import { WordTooltip } from './WordTooltip';
+import { stripHtmlTags, escapeRegex } from '@/lib/utils/format';
 
 interface PaperContentProps {
   paragraphs: ParagraphWithAnnotations[];
   currentIndex: number;
   fontSize: number;
   onParagraphClick: (index: number) => void;
+}
+
+/**
+ * 基于上下文查找词汇在段落中的位置
+ * @param content 段落内容
+ * @param word 要查找的词汇
+ * @param contextBefore 词汇前的上下文（3-5个词）
+ * @param contextAfter 词汇后的上下文（3-5个词）
+ * @returns 词汇的起始和结束位置，找不到返回 null
+ */
+function findWordByContext(
+  content: string,
+  word: string,
+  contextBefore: string = '',
+  contextAfter: string = ''
+): { start: number; end: number } | null {
+  // 策略1: 如果有完整上下文，使用上下文匹配
+  if (contextBefore || contextAfter) {
+    try {
+      // 构建灵活的正则模式：允许词之间有多个空格或换行
+      const beforePattern = contextBefore 
+        ? escapeRegex(contextBefore).replace(/\s+/g, '\\s+') 
+        : '';
+      const wordPattern = escapeRegex(word);
+      const afterPattern = contextAfter 
+        ? escapeRegex(contextAfter).replace(/\s+/g, '\\s+') 
+        : '';
+      
+      // 构建完整模式：(before)?(word)(after)?
+      const pattern = new RegExp(
+        `${beforePattern ? '(' + beforePattern + ')' : ''}(\\s*)(${wordPattern})(\\s*)${afterPattern ? '(' + afterPattern + ')' : ''}`,
+        'i'
+      );
+      
+      const match = content.match(pattern);
+      if (match) {
+        // 找到词汇的实际位置
+        const fullMatch = match[0];
+        const matchIndex = content.indexOf(fullMatch);
+        
+        // 计算词汇在匹配中的偏移量
+        let wordOffset = 0;
+        if (contextBefore) {
+          // 跳过 before context
+          const beforeMatch = match[1] || '';
+          wordOffset += beforeMatch.length;
+        }
+        // 跳过前导空格
+        wordOffset += (match[2] || '').length;
+        
+        const wordStart = matchIndex + wordOffset;
+        const actualWord = match[3] || word;
+        
+        return {
+          start: wordStart,
+          end: wordStart + actualWord.length,
+        };
+      }
+    } catch (error) {
+      console.warn('上下文匹配失败:', error);
+    }
+  }
+  
+  // 策略2: 降级到简单词汇匹配（不区分大小写）
+  const lowerContent = content.toLowerCase();
+  const lowerWord = word.toLowerCase();
+  
+  // 使用单词边界匹配，避免匹配到词的一部分
+  const wordBoundaryPattern = new RegExp(`\\b${escapeRegex(lowerWord)}\\b`, 'i');
+  const match = content.match(wordBoundaryPattern);
+  
+  if (match && match.index !== undefined) {
+    return {
+      start: match.index,
+      end: match.index + match[0].length,
+    };
+  }
+  
+  // 策略3: 最后降级到简单的 indexOf
+  const simpleIndex = lowerContent.indexOf(lowerWord);
+  if (simpleIndex !== -1) {
+    return {
+      start: simpleIndex,
+      end: simpleIndex + word.length,
+    };
+  }
+  
+  return null;
 }
 
 export function PaperContent({
@@ -30,26 +119,50 @@ export function PaperContent({
     position: { x: number; y: number };
   } | null>(null);
 
-  // 高亮段落中的难词
+  // 高亮段落中的难词（使用上下文匹配）
   const highlightWords = (paragraph: ParagraphWithAnnotations) => {
-    let content = paragraph.content;
+    // 防御性清洗：移除可能残留的 HTML 标签
+    let content = stripHtmlTags(paragraph.content);
     const { difficultWords } = paragraph.annotations;
 
     if (difficultWords.length === 0) {
       return content;
     }
 
-    // 按位置排序（从后往前替换，避免位置偏移）
-    const sortedWords = [...difficultWords].sort(
-      (a, b) => (b.position_start || 0) - (a.position_start || 0)
-    );
+    // 第一步：使用上下文匹配找到所有词汇的位置
+    const wordPositions: Array<{
+      word: any;
+      start: number;
+      end: number;
+    }> = [];
 
-    for (const word of sortedWords) {
-      if (word.position_start === null || word.position_end === null) continue;
+    for (const word of difficultWords) {
+      const position = findWordByContext(
+        content,
+        word.word,
+        word.context_before || '',
+        word.context_after || ''
+      );
 
-      const before = content.slice(0, word.position_start);
-      const wordText = content.slice(word.position_start, word.position_end);
-      const after = content.slice(word.position_end);
+      if (position) {
+        wordPositions.push({
+          word,
+          start: position.start,
+          end: position.end,
+        });
+      } else {
+        console.warn(`无法定位词汇: ${word.word}`);
+      }
+    }
+
+    // 第二步：按位置排序（从后往前替换，避免位置偏移）
+    const sortedPositions = wordPositions.sort((a, b) => b.start - a.start);
+
+    // 第三步：从后往前插入高亮标签
+    for (const { word, start, end } of sortedPositions) {
+      const before = content.slice(0, start);
+      const wordText = content.slice(start, end);
+      const after = content.slice(end);
 
       // 根据难度设置颜色
       const colorClass =
@@ -160,4 +273,5 @@ export function PaperContent({
     </div>
   );
 }
+
 

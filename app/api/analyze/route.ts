@@ -8,9 +8,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaperById, getPaperContent, updatePaperStatus } from '@/lib/db/papers';
 import { saveParagraphs, saveTerms, saveDifficultWords, saveSyntaxAnalyses } from '@/lib/db/paragraphs';
 import {
+  generateFastSummary,
+  splitByRules,
+  analyzeParagraphsBatch,
+  shouldUseMock,
+} from '@/lib/ai/analyzer';
+import {
   generateMockSummary,
   splitIntoParagraphs,
-  analyzeParagraphsBatch,
+  analyzeParagraphsBatch as analyzeParagraphsBatchMock,
   detectSection,
 } from '@/lib/ai/mock';
 
@@ -75,25 +81,76 @@ async function performAnalysis(
   level: 'beginner' | 'intermediate' | 'advanced'
 ): Promise<void> {
   try {
-    // Step 1: 生成摘要
-    const summary = generateMockSummary(fullText);
-    
+    const useMock = shouldUseMock();
+    console.log(`[Analysis] 使用 ${useMock ? 'Mock' : '真实 AI'} 模式分析论文 ${paperId}`);
+
+    let summary: string;
+    let paragraphTexts: string[];
+    let sectionInfo: Map<number, string> = new Map(); // 段落索引 -> 章节名
+
+    if (useMock) {
+      // ===== Mock 模式（开发测试用） =====
+      console.log('[Analysis] Mock 模式：使用模拟数据');
+      
+      // Step 1: 生成摘要
+      summary = generateMockSummary(fullText);
+      
+      // Step 2: 智能分段
+      paragraphTexts = splitIntoParagraphs(fullText);
+      
+      // Step 3: 检测章节
+      paragraphTexts.forEach((text, index) => {
+        const section = detectSection(text, index);
+        if (section) {
+          sectionInfo.set(index, section);
+        }
+      });
+    } else {
+      // ===== 真实 AI 模式 =====
+      console.log('[Analysis] 真实 AI 模式：调用豆包 API');
+      
+      // Step 1: 快速生成摘要（并行开始，仅使用前8000字符，5-10秒）
+      const summaryPromise = generateFastSummary(fullText);
+      
+      // Step 2: 基于规则分段（本地计算，<1秒）
+      const paragraphsWithSections = splitByRules(fullText);
+      paragraphTexts = paragraphsWithSections.map((p) => p.content);
+      
+      // 构建章节信息映射
+      paragraphsWithSections.forEach((p, idx) => {
+        if (p.section) {
+          sectionInfo.set(idx, p.section);
+        }
+      });
+      
+      // 等待摘要生成完成
+      summary = await summaryPromise;
+      
+      console.log(`[Analysis] 摘要和分段完成：${paragraphTexts.length} 个段落`);
+    }
+
     // 保存摘要（更新 paper_contents）
     const { getDb } = await import('@/lib/db/client');
     const db = getDb();
     db.prepare('UPDATE paper_contents SET summary = ? WHERE paper_id = ?').run(summary, paperId);
 
-    // Step 2: 智能分段
-    const paragraphTexts = splitIntoParagraphs(fullText);
-
     // Step 3: 批量分析段落
-    const analyses = await analyzeParagraphsBatch(paragraphTexts, level);
+    console.log(`[Analysis] 开始批量分析 ${paragraphTexts.length} 个段落...`);
+    
+    const analyses = useMock
+      ? await analyzeParagraphsBatchMock(paragraphTexts, level)
+      : await analyzeParagraphsBatch(paragraphTexts, level, (current, total) => {
+          console.log(`[Analysis] 进度: ${current}/${total}`);
+        });
 
     // Step 4: 保存段落和标注到数据库
+    console.log('[Analysis] 保存分析结果到数据库...');
+    
     const paragraphIds = saveParagraphs(
       paperId,
       paragraphTexts.map((text, index) => ({
-        section: detectSection(text, index),
+        section: sectionInfo.get(index) || null,
+        title: analyses[index].title || null, // 新增：段落标题
         order_index: index,
         content: text,
         translation: analyses[index].translation,

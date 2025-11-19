@@ -4,6 +4,7 @@
 
 import pdfParse from 'pdf-parse';
 import fs from 'fs';
+import { stripHtmlTags } from '@/lib/utils/format';
 
 // PDF 解析结果
 export interface ParsedPDF {
@@ -59,12 +60,16 @@ export async function parsePDFFromBuffer(buffer: Buffer): Promise<ParsedPDF> {
 
 /**
  * 清洗 PDF 提取的文本
+ * - 移除 HTML 标签
  * - 移除多余空白
  * - 修复断行问题
  * - 统一换行符
  */
 function cleanText(text: string): string {
-  return text
+  // 先移除可能存在的 HTML 标签
+  let cleaned = stripHtmlTags(text);
+  
+  return cleaned
     // 统一换行符
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -140,4 +145,5 @@ export function validatePDF(buffer: Buffer): { valid: boolean; error?: string } 
 
   return { valid: true };
 }
+
 

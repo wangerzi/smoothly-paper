@@ -18,26 +18,33 @@ export function TableOfContents({
   currentIndex,
   onSelect,
 }: TableOfContentsProps) {
-  // 提取章节信息
-  const sections = paragraphs.reduce((acc, para, index) => {
-    if (para.section) {
-      acc.push({
-        section: para.section,
+  // 构建目录项：优先使用段落标题，其次章节名，最后使用段落编号
+  const items = paragraphs.map((para, index) => {
+    // 1. 优先使用 AI 生成的段落标题
+    if (para.title && para.title.trim() !== '' && para.title !== '段落内容') {
+      return {
+        index,
+        title: para.title,
+        section: para.section || null,
+      };
+    }
+    
+    // 2. 其次使用章节名
+    if (para.section && para.section.trim() !== '') {
+      return {
         index,
         title: para.section,
-      });
+        section: para.section,
+      };
     }
-    return acc;
-  }, [] as Array<{ section: string; index: number; title: string }>);
-
-  // 如果没有章节，按段落分组
-  const items = sections.length > 0
-    ? sections
-    : paragraphs.map((_, index) => ({
-        section: `段落 ${index + 1}`,
-        index,
-        title: `段落 ${index + 1}`,
-      }));
+    
+    // 3. 最后使用段落编号
+    return {
+      index,
+      title: `段落 ${index + 1}`,
+      section: null,
+    };
+  });
 
   return (
     <div>
@@ -91,4 +98,5 @@ export function TableOfContents({
     </div>
   );
 }
+
 
