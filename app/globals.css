@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn/ui CSS 变量 */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 224 71% 4%;
+    --radius: 0.5rem;
+    
+    /* 自定义深空主题变量 */
+    --color-space: #0a0e27;
+    --color-space-elevated: #1a1f3a;
+    --color-space-card: #232946;
+    --color-glass: rgba(35, 41, 70, 0.6);
+    
+    /* 渐变色 */
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-accent: linear-gradient(135deg, #06b6d4 0%, #ec4899 100%);
+    
+    /* 光晕效果 */
+    --glow-purple: 0 0 20px rgba(167, 139, 250, 0.6), 0 0 40px rgba(167, 139, 250, 0.3);
+    --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.6), 0 0 40px rgba(6, 182, 212, 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-space text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  
+  /* 滚动条样式 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-space-elevated;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-primary/50 rounded-full hover:bg-primary/70;
+  }
+}
+
+@layer components {
+  /* 毛玻璃卡片 */
+  .glass-card {
+    @apply backdrop-blur-xl bg-glass rounded-3xl border border-white/10 shadow-xl;
+  }
+  
+  /* 霓虹文字 */
+  .neon-text {
+    @apply text-primary-glow;
+    text-shadow: var(--glow-purple);
+    animation: flicker 2s infinite alternate;
+  }
+  
+  /* 渐变背景 */
+  .gradient-bg {
+    background: linear-gradient(270deg, #667eea, #764ba2, #ec4899, #06b6d4);
+    background-size: 400% 400%;
+    animation: gradient-flow 15s ease infinite;
+  }
+  
+  /* 悬停浮动效果 */
+  .float-on-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+  
+  .float-on-hover:hover {
+    @apply -translate-y-1 shadow-glow-purple;
+  }
+  
+  /* 骨架屏 */
+  .skeleton {
+    @apply animate-pulse bg-space-elevated rounded;
+  }
+  
+  .skeleton-line {
+    @apply h-4 bg-space-elevated rounded mb-2 animate-pulse;
+  }
+}
+
+@layer utilities {
+  /* 内发光 */
+  .inner-glow {
+    box-shadow: inset 0 0 20px rgba(167, 139, 250, 0.2);
+  }
+  
+  /* 文字渐变 */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #667eea 0%, #ec4899 100%);
+  }
+  
+  /* 边框渐变 */
+  .border-gradient {
+    border-image: linear-gradient(135deg, #667eea, #ec4899) 1;
+  }
+}
+
+/* 页面过渡动画 */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.page-enter {
+  animation: pageEnter 0.5s ease-out;
+}
+
