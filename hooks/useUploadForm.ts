@@ -89,28 +89,49 @@ export function useUploadForm() {
     setError(null);
 
     try {
-      // TODO: 实现实际的上传逻辑
-      // 这里先模拟上传过程
-      console.log('开始上传:', {
-        fileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        level,
+      // 创建 FormData
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('level', level);
+
+      // 调用上传 API
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
       });
 
-      // 模拟上传延迟
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error || '上传失败');
+      }
 
-      // 上传成功后的处理
-      console.log('上传成功');
-      
-      // TODO: 跳转到分析页面
-      // router.push(`/analyze/${paperId}`);
+      const uploadResult = await uploadResponse.json();
+      const { paperId } = uploadResult;
+
+      console.log('上传成功:', uploadResult);
+
+      // 触发 AI 分析
+      const analyzeResponse = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paperId }),
+      });
+
+      if (!analyzeResponse.ok) {
+        throw new Error('启动分析失败');
+      }
+
+      console.log('分析已启动');
+
+      // 跳转到处理页面
+      window.location.href = `/processing/${paperId}`;
     } catch (err) {
       // 处理错误
       const errorMessage = err instanceof Error ? err.message : '上传失败，请重试';
       setError(errorMessage);
       console.error('上传错误:', err);
-    } finally {
       setIsUploading(false);
     }
   }, [selectedFile, level]);

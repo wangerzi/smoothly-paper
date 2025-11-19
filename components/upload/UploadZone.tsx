@@ -154,6 +154,7 @@ export function UploadZone({ onFileSelect, selectedFile, disabled = false }: Upl
         onChange={handleFileChange}
         className="hidden"
         disabled={disabled}
+        aria-label="选择 PDF 文件"
       />
     </div>
   );
