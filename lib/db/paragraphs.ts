@@ -41,20 +41,10 @@ export interface DifficultWord {
   position_end: number | null;
 }
 
-// 语法分析数据类型
-export interface SyntaxAnalysis {
-  id: number;
-  paragraph_id: number;
-  sentence: string;
-  structure: string | null;
-  explanation: string | null;
-}
-
-// 段落标注（包含术语、难词、语法）
+// 段落标注（包含术语、难词）
 export interface ParagraphAnnotations {
   terms: Term[];
   difficultWords: DifficultWord[];
-  syntaxAnalyses: SyntaxAnalysis[];
 }
 
 // 完整段落数据（包含标注）
@@ -201,33 +191,6 @@ export function saveDifficultWords(
   batchInsert(sql, records);
 }
 
-/**
- * 批量插入语法分析
- */
-export function saveSyntaxAnalyses(
-  paragraphId: number,
-  analyses: Array<{
-    sentence: string;
-    structure?: string;
-    explanation?: string;
-  }>
-): void {
-  if (analyses.length === 0) return;
-
-  const sql = `
-    INSERT INTO syntax_analyses (paragraph_id, sentence, structure, explanation)
-    VALUES (?, ?, ?, ?)
-  `;
-
-  const records = analyses.map((a) => [
-    paragraphId,
-    a.sentence,
-    a.structure || null,
-    a.explanation || null,
-  ]);
-
-  batchInsert(sql, records);
-}
 
 /**
  * 获取段落的所有标注
@@ -245,15 +208,9 @@ export function getParagraphAnnotations(
     [paragraphId]
   );
 
-  const syntaxAnalyses = query<SyntaxAnalysis>(
-    'SELECT * FROM syntax_analyses WHERE paragraph_id = ?',
-    [paragraphId]
-  );
-
   return {
     terms,
     difficultWords,
-    syntaxAnalyses,
   };
 }
 

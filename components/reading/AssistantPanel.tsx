@@ -16,7 +16,7 @@ interface AssistantPanelProps {
 }
 
 export function AssistantPanel({ paragraph, userLevel }: AssistantPanelProps) {
-  const { terms, difficultWords, syntaxAnalyses } = paragraph.annotations;
+  const { terms, difficultWords } = paragraph.annotations;
 
   return (
     <div>
@@ -25,10 +25,9 @@ export function AssistantPanel({ paragraph, userLevel }: AssistantPanelProps) {
       </h2>
 
       <Tabs defaultValue="vocabulary" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="terms">术语</TabsTrigger>
           <TabsTrigger value="vocabulary">生词</TabsTrigger>
-          <TabsTrigger value="syntax">语法</TabsTrigger>
           <TabsTrigger value="translation">翻译</TabsTrigger>
         </TabsList>
 
@@ -116,52 +115,6 @@ export function AssistantPanel({ paragraph, userLevel }: AssistantPanelProps) {
                 );
               })}
             </>
-          )}
-        </TabsContent>
-
-        {/* 语法标签页 */}
-        <TabsContent value="syntax" className="mt-4 space-y-4">
-          {syntaxAnalyses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">本段暂无复杂语法分析</p>
-          ) : (
-            syntaxAnalyses.map((analysis, index) => (
-              <div
-                key={index}
-                className="rounded-lg border border-border/50 bg-muted/30 p-4"
-              >
-                {/* 原句 */}
-                <div className="mb-3">
-                  <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    原句
-                  </p>
-                  <p className="text-sm italic text-foreground">
-                    "{analysis.sentence}"
-                  </p>
-                </div>
-
-                {/* 结构 */}
-                {analysis.structure && (
-                  <div className="mb-3">
-                    <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                      结构
-                    </p>
-                    <p className="text-sm text-primary">{analysis.structure}</p>
-                  </div>
-                )}
-
-                {/* 解释 */}
-                {analysis.explanation && (
-                  <div>
-                    <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                      分析
-                    </p>
-                    <p className="text-sm leading-relaxed text-foreground">
-                      {analysis.explanation}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))
           )}
         </TabsContent>
 

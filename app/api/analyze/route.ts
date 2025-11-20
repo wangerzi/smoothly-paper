@@ -6,9 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaperById, getPaperContent, updatePaperStatus } from '@/lib/db/papers';
-import { saveParagraphs, saveTerms, saveDifficultWords, saveSyntaxAnalyses } from '@/lib/db/paragraphs';
+import { saveParagraphs, saveTerms, saveDifficultWords } from '@/lib/db/paragraphs';
 import {
   generateFastSummary,
+  smartSegmentation,
   splitByRules,
   analyzeParagraphsBatch,
   shouldUseMock,
@@ -112,8 +113,8 @@ async function performAnalysis(
       // Step 1: 快速生成摘要（并行开始，仅使用前8000字符，5-10秒）
       const summaryPromise = generateFastSummary(fullText);
       
-      // Step 2: 基于规则分段（本地计算，<1秒）
-      const paragraphsWithSections = splitByRules(fullText);
+      // Step 2: AI智能分段（AI一次性分析全文并返回分段点）
+      const paragraphsWithSections = await smartSegmentation(fullText);
       paragraphTexts = paragraphsWithSections.map((p) => p.content);
       
       // 构建章节信息映射
@@ -171,11 +172,6 @@ async function performAnalysis(
       // 保存难词
       if (analysis.difficultWords.length > 0) {
         saveDifficultWords(paragraphId, analysis.difficultWords);
-      }
-
-      // 保存语法分析
-      if (analysis.syntaxAnalyses.length > 0) {
-        saveSyntaxAnalyses(paragraphId, analysis.syntaxAnalyses);
       }
     }
 

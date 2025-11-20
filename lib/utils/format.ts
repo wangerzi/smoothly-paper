@@ -128,3 +128,81 @@ export function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * 将段落文本拆分为句子
+ * @param text 段落文本
+ * @returns 句子数组
+ */
+export function splitIntoSentences(text: string): string[] {
+  if (!text || text.trim().length === 0) {
+    return [];
+  }
+
+  // 常见的缩写词，不应该在这些点处拆分
+  const abbreviations = [
+    'Dr', 'Mr', 'Mrs', 'Ms', 'Prof', 'Sr', 'Jr',
+    'Fig', 'fig', 'Eq', 'eq', 'vs', 'etc', 'et al',
+    'i.e', 'e.g', 'cf', 'viz', 'Vol', 'vol', 'pp',
+    'No', 'no', 'Inc', 'Ltd', 'Co', 'Corp',
+  ];
+
+  // 临时替换缩写词中的点，避免被误判为句子结束
+  let processedText = text;
+  const replacements: Array<{ original: string; placeholder: string }> = [];
+  
+  abbreviations.forEach((abbr, index) => {
+    const placeholder = `__ABBR${index}__`;
+    const regex = new RegExp(`\\b${abbr}\\.`, 'g');
+    if (regex.test(processedText)) {
+      replacements.push({ original: `${abbr}.`, placeholder });
+      processedText = processedText.replace(regex, placeholder);
+    }
+  });
+
+  // 处理小数点：保护类似 "3.14" 的数字
+  processedText = processedText.replace(/(\d+)\.(\d+)/g, '$1__DECIMAL__$2');
+
+  // 处理引号内的标点：先标记引号内的内容
+  // 匹配 "..." 或 '...' 内的内容，临时替换其中的句子结束符
+  processedText = processedText.replace(/"[^"]*"/g, (match) => {
+    return match.replace(/\./g, '__QUOTEDOT__')
+                .replace(/!/g, '__QUOTEEXC__')
+                .replace(/\?/g, '__QUOTEQUE__');
+  });
+  processedText = processedText.replace(/'[^']*'/g, (match) => {
+    return match.replace(/\./g, '__QUOTEDOT__')
+                .replace(/!/g, '__QUOTEEXC__')
+                .replace(/\?/g, '__QUOTEQUE__');
+  });
+
+  // 使用正则表达式按句子结束符拆分
+  // 匹配: . ! ? ; : 后面跟着空格或换行
+  const sentenceRegex = /([.!?;:])\s+/g;
+  const parts = processedText.split(sentenceRegex);
+
+  // 重新组合句子（因为split会把分隔符也分出来）
+  const sentences: string[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const sentence = parts[i];
+    const punctuation = parts[i + 1] || '';
+    
+    if (sentence.trim()) {
+      let combined = (sentence + punctuation).trim();
+      
+      // 还原所有替换
+      replacements.forEach(({ original, placeholder }) => {
+        combined = combined.replace(new RegExp(placeholder, 'g'), original);
+      });
+      combined = combined.replace(/__DECIMAL__/g, '.');
+      combined = combined.replace(/__QUOTEDOT__/g, '.');
+      combined = combined.replace(/__QUOTEEXC__/g, '!');
+      combined = combined.replace(/__QUOTEQUE__/g, '?');
+      
+      sentences.push(combined);
+    }
+  }
+
+  // 过滤掉空句子
+  return sentences.filter(s => s.trim().length > 0);
+}
+

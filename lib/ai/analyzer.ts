@@ -10,8 +10,8 @@ import {
   createParagraphAnalysisPrompt,
   createTranslationPrompt,
   createVocabularyPrompt,
-  createSyntaxPrompt,
   createQuickSummaryPrompt,
+  createSmartSegmentationPrompt,
   detectSectionFromContent,
   PROMPT_CONFIG,
 } from './prompts';
@@ -52,11 +52,6 @@ export interface ParagraphAnalysis {
     context_after: string; // 新增：上下文（后）
     position_start: number;
     position_end: number;
-  }>;
-  syntaxAnalyses: Array<{
-    sentence: string;
-    structure: string;
-    explanation: string;
   }>;
 }
 
@@ -102,16 +97,6 @@ const VocabularySchema = z.object({
   ),
 });
 
-// 句法分析Schema
-const SyntaxSchema = z.object({
-  syntaxAnalyses: z.array(
-    z.object({
-      sentence: z.string(),
-      structure: z.string(),
-      explanation: z.string(),
-    })
-  ),
-});
 
 // 旧版完整Schema（保留用于兼容）
 const ParagraphAnalysisSchema = z.object({
@@ -142,6 +127,21 @@ const ParagraphAnalysisSchema = z.object({
     })
   ),
   translation: z.string().min(5, '翻译太短'),
+});
+
+// ============================================================================
+// Schema定义
+// ============================================================================
+
+/** 智能分段Schema */
+const SmartSegmentationSchema = z.object({
+  segments: z.array(
+    z.object({
+      startKeyword: z.string().min(5, '关键词太短'),
+      section: z.string().nullable().optional(),
+      reason: z.string().optional(),
+    })
+  ).min(1, '至少包含一个分段'),
 });
 
 // ============================================================================
@@ -267,45 +267,6 @@ export async function annotateVocabulary(
   }
 }
 
-/**
- * 任务3: 句法分析
- * @param content 段落内容
- * @param retryCount 重试次数
- * @returns 句法分析列表
- */
-export async function analyzeSyntax(
-  content: string,
-  retryCount = 0
-): Promise<
-  Array<{
-    sentence: string;
-    structure: string;
-    explanation: string;
-  }>
-> {
-  const maxRetries = 3;
-  console.log(`[AI Analyzer] 分析句法... ${retryCount > 0 ? `(重试 ${retryCount}/${maxRetries})` : ''}`);
-
-  try {
-    const prompt = createSyntaxPrompt(content);
-    const result = await callDoubaoJSON(prompt, {
-      systemPrompt: '你是一位专业的英语句法分析专家。',
-      schema: SyntaxSchema,
-      maxTokens: 800, // 句法分析约需300-500 tokens
-    });
-
-    return result.syntaxAnalyses;
-  } catch (error) {
-    if (retryCount < maxRetries) {
-      console.warn(`[AI Analyzer] 句法分析失败，${retryCount + 1}秒后重试...`);
-      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 1000));
-      return analyzeSyntax(content, retryCount + 1);
-    }
-    
-    console.error('[AI Analyzer] 句法分析失败，已达最大重试次数');
-    throw error;
-  }
-}
 
 /**
  * 长段落拆分辅助函数
@@ -337,7 +298,85 @@ function splitLongParagraph(text: string, targetWords: number): string[] {
 }
 
 /**
- * 基于规则的智能分段
+ * AI智能分段
+ * @param fullText 论文全文
+ * @returns 分段结果（包含章节信息）
+ */
+export async function smartSegmentation(
+  fullText: string
+): Promise<Array<{
+  section: string | null;
+  content: string;
+}>> {
+  console.log('[AI Analyzer] 开始AI智能分段...');
+
+  try {
+    // 调用豆包API进行智能分段
+    const prompt = createSmartSegmentationPrompt(fullText);
+    const result = await callDoubaoJSON(prompt, {
+      systemPrompt: '你是一位专业的学术论文分析专家。请严格按照JSON格式返回分段结果。',
+      schema: SmartSegmentationSchema,
+      maxTokens: 4000,
+    });
+
+    console.log(`[AI Analyzer] AI返回 ${result.segments.length} 个分段点`);
+
+    // 根据AI返回的关键词在原文中定位并切分
+    const paragraphs: Array<{ section: string | null; content: string }> = [];
+    const segments = result.segments;
+
+    for (let i = 0; i < segments.length; i++) {
+      const currentSegment = segments[i];
+      const nextSegment = segments[i + 1];
+
+      // 查找当前段落的起始位置
+      const startKeyword = currentSegment.startKeyword.trim();
+      const startIndex = fullText.indexOf(startKeyword);
+
+      if (startIndex === -1) {
+        console.warn(`[AI Analyzer] 无法定位关键词: "${startKeyword}"`);
+        continue;
+      }
+
+      // 确定段落的结束位置
+      let endIndex: number;
+      if (nextSegment) {
+        // 有下一段，找到下一段的起始位置
+        const nextKeyword = nextSegment.startKeyword.trim();
+        const nextIndex = fullText.indexOf(nextKeyword, startIndex + startKeyword.length);
+        endIndex = nextIndex !== -1 ? nextIndex : fullText.length;
+      } else {
+        // 最后一段，到文本结尾
+        endIndex = fullText.length;
+      }
+
+      // 提取段落内容
+      const content = fullText.slice(startIndex, endIndex).trim();
+
+      // 过滤掉过短的段落（<50词）
+      const wordCount = content.split(/\s+/).length;
+      if (wordCount < 50) {
+        console.log(`[AI Analyzer] 跳过过短段落（${wordCount}词）: "${content.slice(0, 50)}..."`);
+        continue;
+      }
+
+      paragraphs.push({
+        section: currentSegment.section || null,
+        content,
+      });
+    }
+
+    console.log(`[AI Analyzer] 智能分段完成：${paragraphs.length} 个有效段落`);
+    return paragraphs;
+  } catch (error) {
+    console.error('[AI Analyzer] 智能分段失败，回退到规则分段:', error);
+    // 失败时回退到规则分段
+    return splitByRules(fullText);
+  }
+}
+
+/**
+ * 基于规则的智能分段（降级方案）
  * @param fullText 论文全文
  * @returns 分段结果（包含章节信息）
  */
@@ -451,7 +490,6 @@ export async function analyzeParagraph(
       position_start: word.positionStart,
       position_end: word.positionEnd,
     })),
-    syntaxAnalyses: [], // 句法分析延迟加载，暂返回空数组
   };
 
   console.log(

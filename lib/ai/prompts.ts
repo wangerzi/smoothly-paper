@@ -186,37 +186,6 @@ ${content}
 - 所有字段都必须提供，不能缺失`;
 }
 
-/**
- * 任务3: 生成句法分析的 Prompt
- */
-export function createSyntaxPrompt(content: string): string {
-  return `找出以下段落中1-2个最复杂的长句，分析其结构。
-
-## 段落内容
-
-${content}
-
-## 任务要求
-- 找出1-2个最复杂的句子
-- 简短描述句子结构
-- 用中文解释理解要点（不超过50字）
-
-## 输出格式（JSON）
-
-\`\`\`json
-{
-  "syntaxAnalyses": [
-    {
-      "sentence": "句子原文",
-      "structure": "结构描述（简短）",
-      "explanation": "理解要点（不超过50字）"
-    }
-  ]
-}
-\`\`\`
-
-注意：确保JSON格式正确`;
-}
 
 // ============================================================================
 // 段落深度分析（旧版本，保留用于兼容）
@@ -279,12 +248,7 @@ ${content}
 - 标注难度等级（easy/medium/hard）
 - 给出词在段落中的位置（字符起始和结束位置）
 
-### 3. 复杂句法分析（Syntax Analysis）
-- 找出 1-2 个最复杂的长句
-- 分析句子结构（主句、从句、修饰成分）
-- 用中文解释句子的逻辑关系，帮助理解
-
-### 4. 准确翻译（Translation）
+### 3. 准确翻译（Translation）
 - 提供流畅、准确的学术中文翻译
 - 保持学术严谨性，不要过度口语化
 - 专业术语使用学术界通用的中文译名
@@ -312,13 +276,6 @@ ${content}
       "difficultyLevel": "easy 或 medium 或 hard",
       "positionStart": 在段落中的起始字符位置（数字）,
       "positionEnd": 在段落中的结束字符位置（数字）
-    }
-  ],
-  "syntaxAnalyses": [
-    {
-      "sentence": "复杂句子原文",
-      "structure": "句子结构描述（如：主句 + 定语从句 + 状语）",
-      "explanation": "中文解释：句子的逻辑关系和理解要点"
     }
   ],
   "translation": "段落的完整中文翻译"
@@ -354,6 +311,68 @@ export function createQuickSummaryPrompt(text: string): string {
 ${text}
 
 请直接返回中文摘要，不需要 JSON 格式。`;
+}
+
+// ============================================================================
+// AI智能分段
+// ============================================================================
+
+/**
+ * 生成智能分段的 Prompt
+ * 让AI一次性分析全文并返回所有分段点
+ */
+export function createSmartSegmentationPrompt(fullText: string): string {
+  return `你是一位专业的学术论文分析专家。请分析以下英文论文的全文，进行智能分段。
+
+## 任务要求
+
+### 1. 分段原则
+- 识别论文的自然分段点（段落之间的空行、章节标题等）
+- **重点识别特殊标记**作为强制分段点：
+  - Figure X: 或 Fig. X: 开头的内容（图片说明）
+  - Table X: 或 TABLE X: 开头的内容（表格说明）
+  - Algorithm X: 开头的内容（算法描述）
+  - Equation X: 或公式编号
+  - 带编号的章节标题（如 "1. Introduction", "2.1 Background"）
+- 每段控制在 100-500 个英文单词之间
+- 保持段落的语义完整性，不要在句子中间断开
+- 过短的段落（<50词）可以与相邻段落合并
+
+### 2. 章节识别
+- 识别标准学术论文章节：Abstract, Introduction, Related Work, Methodology, Experiments, Results, Discussion, Conclusion, References等
+- 每个段落标注其所属章节
+
+### 3. 分段标记
+- 为每个段落返回起始关键词（前5-10个词）
+- 这些关键词用于在原文中精确定位段落位置
+
+## 论文全文
+
+${fullText}
+
+## 输出格式（JSON）
+
+请严格按照以下JSON格式返回：
+
+\`\`\`json
+{
+  "segments": [
+    {
+      "startKeyword": "段落开头的5-10个词",
+      "section": "所属章节名称（如 Introduction, Methodology 等）",
+      "reason": "分段原因（简短说明，如：自然段落、Figure说明、章节开始等）"
+    }
+  ]
+}
+\`\`\`
+
+**重要规则**：
+- startKeyword必须是从段落开头提取的准确文本（保持原文大小写）
+- 每个关键词长度5-10个词，足够唯一定位
+- 特别标注Figure、Table、Algorithm等特殊内容的分段点
+- section使用英文章节名
+- 确保JSON格式完全正确，可直接解析
+- 分段数量建议在10-30个之间（取决于论文长度）`;
 }
 
 // ============================================================================

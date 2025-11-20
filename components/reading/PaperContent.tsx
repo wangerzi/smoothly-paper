@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import type { ParagraphWithAnnotations } from '@/lib/db/paragraphs';
 import { WordTooltip } from './WordTooltip';
-import { stripHtmlTags, escapeRegex } from '@/lib/utils/format';
+import { stripHtmlTags, escapeRegex, splitIntoSentences } from '@/lib/utils/format';
 
 interface PaperContentProps {
   paragraphs: ParagraphWithAnnotations[];
@@ -119,15 +119,11 @@ export function PaperContent({
     position: { x: number; y: number };
   } | null>(null);
 
-  // 高亮段落中的难词（使用上下文匹配）
-  const highlightWords = (paragraph: ParagraphWithAnnotations) => {
+  // 高亮段落中的难词并按句子拆分
+  const highlightWordsAndSplitSentences = (paragraph: ParagraphWithAnnotations): string[] => {
     // 防御性清洗：移除可能残留的 HTML 标签
     let content = stripHtmlTags(paragraph.content);
     const { difficultWords } = paragraph.annotations;
-
-    if (difficultWords.length === 0) {
-      return content;
-    }
 
     // 第一步：使用上下文匹配找到所有词汇的位置
     const wordPositions: Array<{
@@ -136,22 +132,24 @@ export function PaperContent({
       end: number;
     }> = [];
 
-    for (const word of difficultWords) {
-      const position = findWordByContext(
-        content,
-        word.word,
-        word.context_before || '',
-        word.context_after || ''
-      );
+    if (difficultWords.length > 0) {
+      for (const word of difficultWords) {
+        const position = findWordByContext(
+          content,
+          word.word,
+          word.context_before || '',
+          word.context_after || ''
+        );
 
-      if (position) {
-        wordPositions.push({
-          word,
-          start: position.start,
-          end: position.end,
-        });
-      } else {
-        console.warn(`无法定位词汇: ${word.word}`);
+        if (position) {
+          wordPositions.push({
+            word,
+            start: position.start,
+            end: position.end,
+          });
+        } else {
+          console.warn(`无法定位词汇: ${word.word}`);
+        }
       }
     }
 
@@ -184,7 +182,10 @@ export function PaperContent({
         after;
     }
 
-    return content;
+    // 第四步：按句子拆分（已经高亮的HTML标签会保留在对应句子中）
+    const sentences = splitIntoSentences(content);
+    
+    return sentences;
   };
 
   // 处理生词点击
@@ -217,7 +218,7 @@ export function PaperContent({
     <div className="space-y-8" onClick={handleWordClick}>
       {paragraphs.map((paragraph, index) => {
         const isActive = index === currentIndex;
-        const highlightedContent = highlightWords(paragraph);
+        const highlightedSentences = highlightWordsAndSplitSentences(paragraph);
 
         return (
           <div
@@ -242,12 +243,16 @@ export function PaperContent({
               段落 {index + 1} / {paragraphs.length}
             </div>
 
-            {/* 段落内容 */}
-            <div
-              className="leading-relaxed text-foreground"
-              style={{ fontSize: `${fontSize}px` }}
-              dangerouslySetInnerHTML={{ __html: highlightedContent }}
-            />
+            {/* 段落内容 - 按句子拆分展示 */}
+            <div className="space-y-3" style={{ fontSize: `${fontSize}px` }}>
+              {highlightedSentences.map((sentence, sentenceIdx) => (
+                <p
+                  key={sentenceIdx}
+                  className="leading-relaxed text-foreground"
+                  dangerouslySetInnerHTML={{ __html: sentence }}
+                />
+              ))}
+            </div>
 
             {/* 词数统计 */}
             {paragraph.word_count && (
